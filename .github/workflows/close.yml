@@ -1,0 +1,12 @@
+name: Emergency Close
+
+on:
+  workflow_dispatch:
+
+jobs:
+  close:
+    runs-on: self-hosted
+    steps:
+      - name: Create command file
+        run: |
+          echo {"action":"CLOSE"} > command.json
