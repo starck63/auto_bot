@@ -1,0 +1,35 @@
+exchange: okx
+symbol: BTC/USDT:USDT         # OKX perpetual (ccxt 표기)
+market_type: swap
+margin_mode: isolated
+leverage: 10
+
+timeframes:
+  entry: "5m"
+  trend: "15m"
+
+risk:
+  risk_per_trade: 0.01        # 1%
+  rr: 2.0
+  daily_loss_limit: 0.03      # -3%면 당일 OFF
+  max_consecutive_losses: 2
+  cooldown_minutes: 90
+
+stops:
+  swing_lookback: 3           # 구조(Swing) 판정용 (좌우 N개)
+  atr_period: 14
+  buffer_atr_k: 0.10
+  buffer_min_ticks: 2
+
+filters:
+  trend_ema_period: 50        # 15분봉 EMA50 기준 방향필터
+  only_trade_with_trend: true
+
+execution:
+  order_type: market
+  slippage_guard_bps: 8       # 0.08% 이상 체결 괴리 예상되면 취소/대기 (옵션)
+  poll_seconds: 10
+
+logging:
+  trade_log_path: "./trades.jsonl"
+  state_path: "./state.json"
