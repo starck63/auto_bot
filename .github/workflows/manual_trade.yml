@@ -1,0 +1,20 @@
+name: Manual Trade
+
+on:
+  workflow_dispatch:
+    inputs:
+      side:
+        description: "long or short"
+        required: true
+      risk:
+        description: "risk percent (ex: 1 for 1%)"
+        required: false
+        default: "1"
+
+jobs:
+  trade:
+    runs-on: self-hosted
+    steps:
+      - name: Send trade command
+        run: |
+          echo {"action":"TRADE","side":"${{ github.event.inputs.side }}","risk":"${{ github.event.inputs.risk }}"} > command.json
