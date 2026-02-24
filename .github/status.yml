@@ -1,0 +1,12 @@
+name: Bot Status
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: self-hosted
+    steps:
+      - name: Show state
+        run: |
+          type state.json
