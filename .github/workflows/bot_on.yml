@@ -1,0 +1,12 @@
+name: Bot ON
+
+on:
+  workflow_dispatch:
+
+jobs:
+  on:
+    runs-on: self-hosted
+    steps:
+      - name: Enable bot
+        run: |
+          echo {"action":"BOT_ON"} > command.json
