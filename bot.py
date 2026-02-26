@@ -5,10 +5,12 @@ import FinanceDataReader as fdr
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
-import requests # 야후 서버 차단 방지용 부품 추가
+import requests
 
+# --- [웹 앱 기본 설정] ---
 st.set_page_config(page_title="NS 글로벌 관제탑", page_icon="🏢", layout="centered")
 
+# --- [폰트 강제 고정] ---
 @st.cache_resource
 def setup_font():
     font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
@@ -21,12 +23,16 @@ def setup_font():
 
 setup_font()
 
-# [핵심 보완1] 국내 주식 리스트를 매번 다운받지 않고 메모리에 저장하여 속도 5배 향상
+# --- [종목 리스트 메모리 저장 (과부하 방지)] ---
 @st.cache_data(ttl=3600*24)
 def get_krx_list():
     return fdr.StockListing('KRX')
 
-def get_premium_analysis(name, roe, pbr, debt, is_us):
+# --- [AI 비서 분석 엔진 (차단 대비 유연한 멘트 포함)] ---
+def get_premium_analysis(name, roe, pbr, debt, is_us, is_info_blocked):
+    if is_info_blocked:
+        return f"💡 **[시장 관제]** 대표님, 현재 해외 데이터 센터(야후) 접속량 폭주로 일부 재무 지표 수신이 지연되었습니다. 하지만 **핵심인 20/60일선 스윙 차트는 보조 루트를 통해 완벽하게 확보**했습니다. 아래 차트로 추세를 판독하십시오."
+
     if any(x in name for x in ["200", "KODEX", "TIGER", "S&P", "나스닥", "ETF"]):
         return f"💡 **[시장 관제]** 지수 추종 ETF입니다. 개별 재무보다는 60일선(빨간색) 추세를 '단지 전체의 지반'이라 생각하고 20일선(노란색)의 돌파 여부를 확인하십시오."
     
@@ -45,28 +51,34 @@ def get_premium_analysis(name, roe, pbr, debt, is_us):
         
     return f"**📊 기업등급:** {grade}\n\n**📝 상세전략:** {strategy}\n\n*(체력: ROE {roe:.1f}% / 부채 {debt:.1f}%)*"
 
+# --- [정밀 검색 및 코드 변환 엔진] ---
 def get_ticker_by_name(name):
     direct_map = {
-        "타이거200": "102110.KS", "코덱스200": "069500.KS",
-        "TIGER200": "102110.KS", "KODEX200": "069500.KS",
+        "타이거200": "102110", "코덱스200": "069500",
+        "TIGER200": "102110", "KODEX200": "069500",
         "애플": "AAPL", "테슬라": "TSLA", "엔비디아": "NVDA", "아마존": "AMZN", 
         "마소": "MSFT", "넷플릭스": "NFLX", "구글": "GOOGL", "나스닥100": "QQQ", "S&P500": "SPY"
     }
     clean_name = name.replace(" ", "").upper()
+    
     if clean_name in direct_map:
         ticker = direct_map[clean_name]
-        return ticker, name, (".KS" not in ticker and not ticker.isdigit())
+        is_us = not ticker.isdigit()
+        yf_ticker = ticker if is_us else f"{ticker}.KS"
+        return yf_ticker, ticker, name, is_us
     
     try:
-        krx = get_krx_list() # 캐시된 리스트 사용 (과부하 방지)
+        krx = get_krx_list()
         search_kw = clean_name.replace("타이거", "TIGER").replace("코덱스", "KODEX")
         match = krx[krx['Name'].str.replace(" ", "").str.contains(search_kw, na=False, case=False)]
         if not match.empty:
             best = match.sort_values(by='Marcap', ascending=False).iloc[0]
-            return f"{best['Code']}.KS", best['Name'], False
+            code = best['Code']
+            return f"{code}.KS", code, best['Name'], False
     except: pass
-    return clean_name, name, True
+    return clean_name, clean_name, name, True
 
+# --- [UI 화면 구성] ---
 st.title("🏢 NS 글로벌 통합 관제탑")
 st.markdown("스마트폰에 최적화된 실시간 우량주/ETF 분석 시스템입니다.")
 st.markdown("---")
@@ -75,29 +87,49 @@ query = st.text_input("👉 종목명 입력 (타이거200, 아마존 등)", pla
 
 if st.button("분석 시작", use_container_width=True):
     if query:
-        with st.spinner('실시간 시장 데이터를 스캔 중입니다...'):
-            ticker, real_name, is_us = get_ticker_by_name(query)
+        with st.spinner('시장 데이터를 스캔 중입니다... (우회 루트 작동 중)'):
+            yf_ticker, fdr_ticker, real_name, is_us = get_ticker_by_name(query)
+            data = pd.DataFrame()
+            
             try:
-                # [핵심 보완2] 야후 서버 차단 우회를 위한 사람 모방 신분증(User-Agent) 부착
-                session = requests.Session()
-                session.headers.update({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-                })
+                # 1. 차트 데이터 우선 확보 (한국주식은 FDR 우선, 실패 시 야후)
+                if not is_us:
+                    try:
+                        data = fdr.DataReader(fdr_ticker)
+                        data = data.tail(250)
+                    except: pass
                 
-                stock = yf.Ticker(ticker, session=session)
-                data = stock.history(period="1y")
-                
+                if data.empty:
+                    session = requests.Session()
+                    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+                    stock = yf.Ticker(yf_ticker, session=session)
+                    data = stock.history(period="1y")
+
                 if not data.empty:
-                    info = stock.info
-                    roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-                    debt = info.get('debtToEquity', 0) if info.get('debtToEquity') else 0
-                    pbr = info.get('priceToBook', 1.0) if info.get('priceToBook') else 1.0
+                    # 2. 재무 데이터 확보 (야후 차단 대비 보호막 설치)
+                    roe, debt, pbr = 0.0, 0.0, 1.0
+                    is_info_blocked = False
                     
-                    if not is_us and pbr == 1.0 and any(x in real_name for x in ["금융", "지주"]): pbr = 0.38
+                    try:
+                        stock = yf.Ticker(yf_ticker)
+                        info = stock.info
+                        if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info):
+                            is_info_blocked = True
+                        else:
+                            roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
+                            debt = info.get('debtToEquity', 0) if info.get('debtToEquity') else 0
+                            pbr = info.get('priceToBook', 1.0) if info.get('priceToBook') else 1.0
+                            if not is_us and pbr == 1.0 and any(x in real_name for x in ["금융", "지주"]): 
+                                pbr = 0.38
+                    except:
+                        is_info_blocked = True
 
                     st.success(f"[{real_name}] 스캔 완료!")
-                    st.info(get_premium_analysis(real_name, roe, pbr, debt, is_us))
                     
+                    # 브리핑 출력
+                    st.info(get_premium_analysis(real_name, roe, pbr, debt, is_us, is_info_blocked))
+                    
+                    # 20/60일선 차트 그리기
                     data['MA20'] = data['Close'].rolling(20).mean()
                     data['MA60'] = data['Close'].rolling(60).mean()
                     
@@ -106,6 +138,7 @@ if st.button("분석 시작", use_container_width=True):
                     ax.plot(data.index[-100:], data['MA20'].tail(100), label='20MA (단기)', color='orange', linestyle='--')
                     ax.plot(data.index[-100:], data['MA60'].tail(100), label='60MA (스윙)', color='red', linewidth=2)
                     
+                    # 골든크로스 상승 탄력 구간 (빨간색 음영)
                     ax.fill_between(data.index[-100:], data['MA20'].tail(100), data['MA60'].tail(100), 
                                      where=(data['MA20'].tail(100) >= data['MA60'].tail(100)), color='red', alpha=0.1)
                     
@@ -117,6 +150,6 @@ if st.button("분석 시작", use_container_width=True):
                 else:
                     st.error("⚠️ 데이터를 찾지 못했습니다. 종목명을 다시 확인해 주십시오.")
             except Exception as e:
-                st.error("⚠️ 야후 데이터 센터 접속량이 폭주하여 일시 지연되었습니다. 10초 뒤 다시 눌러주십시오.")
+                st.error(f"⚠️ 시스템 오류: {e}")
     else:
         st.warning("종목명을 먼저 입력해 주십시오.")
